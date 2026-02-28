@@ -136,7 +136,7 @@ public class AnvilDropActivePhase {
 		while (playerIterator.hasNext()) {
 			PlayerRef playerRef = playerIterator.next();
 			playerRef.ifOnline(this.world, player -> {
-				if (!this.map.getBox().contains(player.getPos())) {
+				if (!this.map.getBox().contains(player.getEntityPos())) {
 					this.eliminate(player, player.getY() < this.map.getBox().minY ? ".hole_in_floor" : ".out_of_bounds", false);
 					playerIterator.remove();
 				}
