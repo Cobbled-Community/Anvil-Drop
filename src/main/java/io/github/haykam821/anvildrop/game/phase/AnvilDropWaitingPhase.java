@@ -3,10 +3,10 @@ package io.github.haykam821.anvildrop.game.phase;
 import io.github.haykam821.anvildrop.game.AnvilDropConfig;
 import io.github.haykam821.anvildrop.game.map.AnvilDropMap;
 import io.github.haykam821.anvildrop.game.map.AnvilDropMapBuilder;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.GameType;
 import xyz.nucleoid.fantasy.RuntimeWorldConfig;
 import xyz.nucleoid.plasmid.api.game.GameOpenContext;
 import xyz.nucleoid.plasmid.api.game.GameOpenProcedure;
@@ -23,11 +23,11 @@ import xyz.nucleoid.stimuli.event.player.PlayerDeathEvent;
 
 public class AnvilDropWaitingPhase {
 	private final GameSpace gameSpace;
-	private final ServerWorld world;
+	private final ServerLevel world;
 	private final AnvilDropMap map;
 	private final AnvilDropConfig config;
 
-	public AnvilDropWaitingPhase(GameSpace gameSpace, ServerWorld world, AnvilDropMap map, AnvilDropConfig config) {
+	public AnvilDropWaitingPhase(GameSpace gameSpace, ServerLevel world, AnvilDropMap map, AnvilDropConfig config) {
 		this.gameSpace = gameSpace;
 		this.world = world;
 		this.map = map;
@@ -56,9 +56,7 @@ public class AnvilDropWaitingPhase {
 	}
 
 	private JoinAcceptorResult onAcceptPlayers(JoinAcceptor acceptor) {
-		return acceptor.teleport(this.world, AnvilDropActivePhase.getSpawnPos(this.map)).thenRunForEach(player -> {
-			player.changeGameMode(GameMode.ADVENTURE);
-		});
+		return acceptor.teleport(this.world, AnvilDropActivePhase.getSpawnPos(this.map)).thenRunForEach(player -> player.setGameMode(GameType.ADVENTURE));
 	}
 
 	private GameResult requestStart() {
@@ -66,7 +64,7 @@ public class AnvilDropWaitingPhase {
 		return GameResult.ok();
 	}
 
-	private EventResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
+	private EventResult onPlayerDeath(ServerPlayer player, DamageSource source) {
 		AnvilDropActivePhase.spawn(this.world, this.map, player);
 		return EventResult.DENY;
 	}

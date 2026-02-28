@@ -6,15 +6,15 @@ import java.util.stream.Collectors;
 
 import io.github.haykam821.anvildrop.game.AnvilDropConfig;
 import io.github.haykam821.anvildrop.game.map.AnvilDropMap;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.registry.tag.DamageTypeTags;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.tags.DamageTypeTags;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.network.chat.Component;
+import net.minecraft.ChatFormatting;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.GameType;
 import xyz.nucleoid.plasmid.api.game.GameActivity;
 import xyz.nucleoid.plasmid.api.game.GameCloseReason;
 import xyz.nucleoid.plasmid.api.game.GameSpace;
@@ -30,7 +30,7 @@ import xyz.nucleoid.stimuli.event.player.PlayerDamageEvent;
 import xyz.nucleoid.stimuli.event.player.PlayerDeathEvent;
 
 public class AnvilDropActivePhase {
-	private final ServerWorld world;
+	private final ServerLevel world;
 	private final GameSpace gameSpace;
 	private final AnvilDropMap map;
 	private final AnvilDropConfig config;
@@ -41,7 +41,7 @@ public class AnvilDropActivePhase {
 	private int rounds = 0;
 	private boolean anvilsDropping = false;
 
-	public AnvilDropActivePhase(GameSpace gameSpace, ServerWorld world, AnvilDropMap map, AnvilDropConfig config, Set<PlayerRef> players) {
+	public AnvilDropActivePhase(GameSpace gameSpace, ServerLevel world, AnvilDropMap map, AnvilDropConfig config, Set<PlayerRef> players) {
 		this.world = world;
 		this.gameSpace = gameSpace;
 		this.map = map;
@@ -60,7 +60,7 @@ public class AnvilDropActivePhase {
 		activity.deny(GameRuleType.PVP);
 	}
 
-	public static void open(GameSpace gameSpace, ServerWorld world, AnvilDropMap map, AnvilDropConfig config) {
+	public static void open(GameSpace gameSpace, ServerLevel world, AnvilDropMap map, AnvilDropConfig config) {
 		Set<PlayerRef> players = gameSpace.getPlayers().participants().stream().map(PlayerRef::of).collect(Collectors.toSet());
 		AnvilDropActivePhase phase = new AnvilDropActivePhase(gameSpace, world, map, config, players);
 
@@ -84,25 +84,25 @@ public class AnvilDropActivePhase {
  		for (PlayerRef playerRef : this.players) {
 			playerRef.ifOnline(this.world, player -> {
 				this.updateRoundsExperienceLevel(player);
-				player.changeGameMode(GameMode.ADVENTURE);
+				player.setGameMode(GameType.ADVENTURE);
 				AnvilDropActivePhase.spawn(this.world, this.map, player);
 			});
 		}
 
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers().spectators()) {
+		for (ServerPlayer player : this.gameSpace.getPlayers().spectators()) {
 			this.updateRoundsExperienceLevel(player);
 			this.setSpectator(player);
 			AnvilDropActivePhase.spawn(this.world, this.map, player);
 		}
 	}
 
-	private void updateRoundsExperienceLevel(ServerPlayerEntity player) {
-		player.setExperienceLevel(this.rounds + 1);
+	private void updateRoundsExperienceLevel(ServerPlayer player) {
+		player.setExperienceLevels(this.rounds + 1);
 	}
 
 	private void setRounds(int rounds) {
 		this.rounds = rounds;
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers()) {
+		for (ServerPlayer player : this.gameSpace.getPlayers()) {
 			this.updateRoundsExperienceLevel(player);
 		}
 	}
@@ -136,7 +136,7 @@ public class AnvilDropActivePhase {
 		while (playerIterator.hasNext()) {
 			PlayerRef playerRef = playerIterator.next();
 			playerRef.ifOnline(this.world, player -> {
-				if (!this.map.getBox().contains(player.getEntityPos())) {
+				if (!this.map.getBox().contains(player.position())) {
 					this.eliminate(player, player.getY() < this.map.getBox().minY ? ".hole_in_floor" : ".out_of_bounds", false);
 					playerIterator.remove();
 				}
@@ -147,32 +147,32 @@ public class AnvilDropActivePhase {
 		if (this.players.size() < 2) {
 			if (this.players.size() == 1 && this.singleplayer) return;
 			
-			Text endingMessage = this.getEndingMessage();
-			for (ServerPlayerEntity player : this.gameSpace.getPlayers()) {
-				player.sendMessage(endingMessage, false);
+			Component endingMessage = this.getEndingMessage();
+			for (ServerPlayer player : this.gameSpace.getPlayers()) {
+				player.displayClientMessage(endingMessage, false);
 			}
 
-			this.ticksUntilClose = this.config.getTicksUntilClose().get(this.world.getRandom());
+			this.ticksUntilClose = this.config.getTicksUntilClose().sample(this.world.getRandom());
 		}
 	}
 
-	private Text getEndingMessage() {
+	private Component getEndingMessage() {
 		if (this.players.size() == 1) {
 			PlayerRef winnerRef = this.players.iterator().next();
 			if (winnerRef.isOnline(this.world)) {
-				PlayerEntity winner = winnerRef.getEntity(this.world);
-				return Text.translatable("text.anvildrop.win", winner.getDisplayName(), this.rounds).formatted(Formatting.GOLD);
+				Player winner = winnerRef.getEntity(this.world);
+				return Component.translatable("text.anvildrop.win", winner.getDisplayName(), this.rounds).withStyle(ChatFormatting.GOLD);
 			}
 		}
-		return Text.translatable("text.anvildrop.no_winners", this.rounds).formatted(Formatting.GOLD);
+		return Component.translatable("text.anvildrop.no_winners", this.rounds).withStyle(ChatFormatting.GOLD);
 	}
 
 	private boolean isGameEnding() {
 		return this.ticksUntilClose >= 0;
 	}
 
-	private void setSpectator(ServerPlayerEntity player) {
-		player.changeGameMode(GameMode.SPECTATOR);
+	private void setSpectator(ServerPlayer player) {
+		player.setGameMode(GameType.SPECTATOR);
 	}
 
 	private JoinAcceptorResult onAcceptPlayers(JoinAcceptor acceptor) {
@@ -182,19 +182,19 @@ public class AnvilDropActivePhase {
 		});
 	}
 
-	private void removePlayer(ServerPlayerEntity player) {
+	private void removePlayer(ServerPlayer player) {
 		this.eliminate(player, true);
 	}
 
-	private void eliminate(ServerPlayerEntity eliminatedPlayer, String suffix, boolean remove) {
+	private void eliminate(ServerPlayer eliminatedPlayer, String suffix, boolean remove) {
 		if (this.isGameEnding()) return;
 
 		PlayerRef eliminatedRef = PlayerRef.of(eliminatedPlayer);
 		if (!this.players.contains(eliminatedRef)) return;
 
-		Text message = Text.translatable("text.anvildrop.eliminated" + suffix, eliminatedPlayer.getDisplayName()).formatted(Formatting.RED);
-		for (ServerPlayerEntity player : this.gameSpace.getPlayers()) {
-			player.sendMessage(message, false);
+		Component message = Component.translatable("text.anvildrop.eliminated" + suffix, eliminatedPlayer.getDisplayName()).withStyle(ChatFormatting.RED);
+		for (ServerPlayer player : this.gameSpace.getPlayers()) {
+			player.displayClientMessage(message, false);
 		}
 
 		if (remove) {
@@ -203,11 +203,11 @@ public class AnvilDropActivePhase {
 		this.setSpectator(eliminatedPlayer);
 	}
 
-	private void eliminate(ServerPlayerEntity eliminatedPlayer, boolean remove) {
+	private void eliminate(ServerPlayer eliminatedPlayer, boolean remove) {
 		this.eliminate(eliminatedPlayer, "", remove);
 	}
 
-	private EventResult onPlayerDeath(ServerPlayerEntity player, DamageSource source) {
+	private EventResult onPlayerDeath(ServerPlayer player, DamageSource source) {
 		if (this.players.contains(PlayerRef.of(player))) {
 			this.eliminate(player, true);
 		} else {
@@ -217,23 +217,23 @@ public class AnvilDropActivePhase {
 	}
 
 	private static boolean isEliminatingDamageSource(DamageSource source) {
-		return source.isIn(DamageTypeTags.DAMAGES_HELMET);
+		return source.is(DamageTypeTags.DAMAGES_HELMET);
 	}
 
-	private EventResult onPlayerDamage(ServerPlayerEntity player, DamageSource source, float amount) {
+	private EventResult onPlayerDamage(ServerPlayer player, DamageSource source, float amount) {
 		if (AnvilDropActivePhase.isEliminatingDamageSource(source) && this.players.contains(PlayerRef.of(player))) {
 			this.eliminate(player, ".falling_anvil", true);
 		}
 		return EventResult.ALLOW;
 	}
 
-	public static void spawn(ServerWorld world, AnvilDropMap map, ServerPlayerEntity player) {
-		Vec3d spawnPos = AnvilDropActivePhase.getSpawnPos(map);
-		player.teleport(world, spawnPos.getX(), spawnPos.getY(), spawnPos.getZ(), Set.of(), 0, 0, true);
+	public static void spawn(ServerLevel world, AnvilDropMap map, ServerPlayer player) {
+		Vec3 spawnPos = AnvilDropActivePhase.getSpawnPos(map);
+		player.teleportTo(world, spawnPos.x(), spawnPos.y(), spawnPos.z(), Set.of(), 0, 0, true);
 	}
 
-	protected static Vec3d getSpawnPos(AnvilDropMap map) {
-		Vec3d center = map.getPlatformBounds().center();
-		return new Vec3d(center.getX(), map.getPlatformBounds().min().getY() + 1, center.getZ());
+	protected static Vec3 getSpawnPos(AnvilDropMap map) {
+		Vec3 center = map.getPlatformBounds().center();
+		return new Vec3(center.x(), map.getPlatformBounds().min().getY() + 1, center.z());
 	}
 }
